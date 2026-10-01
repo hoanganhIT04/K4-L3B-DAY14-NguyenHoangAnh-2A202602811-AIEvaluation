@@ -710,8 +710,11 @@ class FailureAnalyzer:
             dict mapping failure_type → count.
             Example: {"hallucination": 3, "irrelevant": 2, "incomplete": 5}
         """
-        # TODO
-        raise NotImplementedError("Implement categorize_failures")
+        counts = {}
+        for f in failures:
+            if f.failure_type is not None:
+                counts[f.failure_type] = counts.get(f.failure_type, 0) + 1
+        return counts
 
     def find_root_cause(self, failure: EvalResult) -> str:
         """
@@ -723,8 +726,26 @@ class FailureAnalyzer:
             "Answer is missing key information — increase context window or improve generation"
             "Multiple issues detected — review full pipeline"
         """
-        # TODO: compare faithfulness, relevance, completeness, return appropriate string
-        raise NotImplementedError("Implement find_root_cause")
+        scores = {
+            "faithfulness": failure.faithfulness,
+            "relevance": failure.relevance,
+            "completeness": failure.completeness,
+        }
+        min_score = min(scores.values())
+
+        lowest_keys = [k for k, v in scores.items() if v == min_score]
+        if len(lowest_keys) > 1:
+            return "Multiple issues detected — review full pipeline"
+
+        lowest_metric = lowest_keys[0]
+        if lowest_metric == "faithfulness":
+            return "Context is missing or irrelevant — improve retrieval"
+        elif lowest_metric == "relevance":
+            return "Answer does not address the question — improve prompt clarity"
+        elif lowest_metric == "completeness":
+            return "Answer is missing key information — increase context window or improve generation"
+        else:
+            return "Multiple issues detected — review full pipeline"
 
     def generate_improvement_log(self, failures: list, suggestions: list[str]) -> str:
         """Generate a Markdown table logging failures and improvement actions.
@@ -740,10 +761,18 @@ class FailureAnalyzer:
 
         Returns:
             Markdown table string with a row per failure. Status is always "Open".
-
-        TODO: Build markdown table with failure details + matched suggestions
         """
-        raise NotImplementedError
+        lines = [
+            "| Failure ID | Type | Root Cause | Suggested Fix | Status |",
+            "|------------|------|------------|---------------|--------|",
+        ]
+        for i, f in enumerate(failures):
+            fid = f"F{i+1:03d}"
+            ftype = f.failure_type if f.failure_type else "Unknown"
+            root_cause = self.find_root_cause(f)
+            fix = suggestions[i] if i < len(suggestions) else (suggestions[0] if suggestions else "Review pipeline")
+            lines.append(f"| {fid} | {ftype} | {root_cause} | {fix} | Open |")
+        return "\n".join(lines)
 
     def generate_improvement_suggestions(
         self, failures: list[EvalResult]
@@ -761,8 +790,31 @@ class FailureAnalyzer:
         Returns:
             List of at least 3 suggestion strings (or fewer if failures is empty).
         """
-        # TODO: analyze categorized failures and return suggestions
-        raise NotImplementedError("Implement generate_improvement_suggestions")
+        if not failures:
+            return []
+
+        cat_counts = self.categorize_failures(failures)
+        suggestions = []
+
+        if cat_counts.get("hallucination", 0) > 0:
+            suggestions.append("Implement hallucination checker to filter unsupported claims")
+        if cat_counts.get("irrelevant", 0) > 0:
+            suggestions.append("Improve prompt clarity and intent classification")
+        if cat_counts.get("incomplete", 0) > 0:
+            suggestions.append("Increase chunk size in RAG pipeline to reduce context fragmentation")
+        if cat_counts.get("off_topic", 0) > 0:
+            suggestions.append("Add few-shot examples showing complete answers to improve completeness")
+
+        default_suggestions = [
+            "Implement hallucination checker to filter unsupported claims",
+            "Increase chunk size in RAG pipeline to reduce context fragmentation",
+            "Add few-shot examples showing complete answers to improve completeness",
+        ]
+        for s in default_suggestions:
+            if s not in suggestions:
+                suggestions.append(s)
+
+        return suggestions
 
 
 # ---------------------------------------------------------------------------
