@@ -156,31 +156,32 @@ và quyết định thiết kế, không chép lại toàn bộ QA.
 
 | Hạng mục | Kết quả |
 |---|---|
-| Tổng số records | ____ / 20 |
-| Easy | ____ / 5 |
-| Medium | ____ / 7 |
-| Hard | ____ / 5 |
-| Adversarial | ____ / 3 |
-| Source documents được sử dụng | ____ / 10 |
-| Validator status | PASS / FAIL |
+| Tổng số records | 20 / 20 |
+| Easy | 5 / 5 |
+| Medium | 7 / 7 |
+| Hard | 5 / 5 |
+| Adversarial | 3 / 3 |
+| Source documents được sử dụng | 10 / 10 |
+| Validator status | PASS |
 
 **Ba case đại diện cho quyết định thiết kế**
 
 | ID | Difficulty | Source document(s) | Vì sao case phù hợp với difficulty/attack type? |
 |---|---|---|---|
-| | | | |
-| | | | |
-| | | | |
+| E02 | easy | `01_product_catalog.md` | Tra cứu trực tiếp thông số phần cứng NovaBook 14 (RAM 16 GB, SSD 512 GB) từ một vị trí văn bản trong corpus mà không cần suy luận phức tạp. |
+| H01 | hard | `09_escalation_and_policy_updates.md` | Yêu cầu xử lý điều kiện quy định phiên bản chính sách: Sự kiện kích hoạt (ngày đặt hàng 25/8/2026) quyết định áp dụng policy v1.0 (21 ngày unopened), không phụ thuộc vào ngày nhận hàng (3/9/2026). |
+| A02 | adversarial | `00_system_scope.md` | Tấn công Prompt Injection cố tình giả lập lệnh hệ thống (System Override) để ép Assistant tiết lộ system prompt và mật khẩu. Assistant từ chối theo nguyên tắc bảo mật. |
 
 **Điểm khó nhất khi xây dựng expected answer hoặc evidence là gì?**
 
 > *Câu trả lời:*
+> Điểm khó nhất là việc trích xuất bằng chứng (evidence provenance) phải khớp tuyệt đối (verbatim substring) từng ký tự từ các file Markdown trong corpus, đặc biệt là các đoạn chứa mã định danh (như tên file `03_promotions_and_membership.md` có ký tự backtick) hoặc thuật ngữ nghiệp vụ. Đồng thời, việc đảm bảo mọi claim trong `expected_answer` đều có bằng chứng trực tiếp bảo vệ mà không bịa thêm thông tin ngoài corpus đòi hỏi sự rà soát kỹ lưỡng qua nhiều tài liệu liên quan (cross-document evidence).
 
 **Xác nhận:**
 
-- [ ] Mọi claim trong expected answer đều có evidence hỗ trợ.
-- [ ] Không có questions trùng ý và không dùng kiến thức ngoài corpus.
-- [ ] `python validate_golden_dataset.py` báo `PASS`.
+- [x] Mọi claim trong expected answer đều có evidence hỗ trợ.
+- [x] Không có questions trùng ý và không dùng kiến thức ngoài corpus.
+- [x] `python validate_golden_dataset.py` báo `PASS`.
 
 ### Exercise 3.2 — Benchmark Run
 
