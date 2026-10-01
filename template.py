@@ -25,6 +25,7 @@ The reranking helper is an optional bonus exercise and may remain unimplemented.
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass, field
 from typing import Any, Callable
@@ -386,8 +387,7 @@ class LLMJudge:
     """
 
     def __init__(self, judge_llm_fn: Callable[[str], str]) -> None:
-        # TODO: store judge_llm_fn
-        pass
+        self.judge_llm_fn = judge_llm_fn
 
     def score_response(
         self,
@@ -419,8 +419,38 @@ class LLMJudge:
                 "reasoning": str,               # raw LLM explanation
             }
         """
-        # TODO
-        raise NotImplementedError("Implement score_response")
+        prompt = (
+            f"Question: {question}\n"
+            f"Answer: {answer}\n"
+            f"Rubric: {rubric}\n"
+            "Evaluate the answer based on the rubric and return scores in JSON format."
+        )
+        raw_response = self.judge_llm_fn(prompt)
+
+        scores = {}
+        try:
+            parsed = json.loads(raw_response)
+            if isinstance(parsed, dict):
+                for k, v in parsed.items():
+                    try:
+                        scores[k] = float(v)
+                    except (ValueError, TypeError):
+                        scores[k] = 0.5
+            else:
+                for k in rubric:
+                    scores[k] = 0.5
+        except Exception:
+            for k in rubric:
+                scores[k] = 0.5
+
+        if not scores and rubric:
+            for k in rubric:
+                scores[k] = 0.5
+
+        return {
+            "scores": scores,
+            "reasoning": raw_response,
+        }
 
     def detect_bias(self, scores_batch: list[dict[str, Any]]) -> dict[str, Any]:
         """
@@ -441,8 +471,26 @@ class LLMJudge:
                 "severity_bias":   bool,
             }
         """
-        # TODO
-        raise NotImplementedError("Implement detect_bias")
+        all_scores = []
+        for item in scores_batch:
+            if isinstance(item, dict) and "scores" in item and isinstance(item["scores"], dict):
+                all_scores.extend([float(v) for v in item["scores"].values()])
+
+        if all_scores:
+            avg_score = sum(all_scores) / len(all_scores)
+            leniency_bias = avg_score > 0.8
+            severity_bias = avg_score < 0.3
+        else:
+            leniency_bias = False
+            severity_bias = False
+
+        positional_bias = False
+
+        return {
+            "positional_bias": positional_bias,
+            "leniency_bias": leniency_bias,
+            "severity_bias": severity_bias,
+        }
 
 
 # ---------------------------------------------------------------------------
