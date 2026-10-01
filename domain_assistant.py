@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from dotenv import load_dotenv
+from google import genai
 from openai import OpenAI, OpenAIError
 
 load_dotenv(Path(__file__).resolve().with_name(".env"))
@@ -266,6 +267,36 @@ class OpenAIGenerator:
         return answer
 
 
+class GeminiGenerator:
+    def __init__(self, max_output_tokens: int = 300) -> None:
+        api_key = os.getenv("GEMINI_API_KEY", "").strip() or os.getenv("GOOGLE_API_KEY", "").strip()
+        self.model = os.getenv("GEMINI_MODEL", "").strip() or "gemini-2.5-flash"
+        if not api_key:
+            raise RuntimeError("GEMINI_API_KEY is missing from environment")
+        if not self.model:
+            raise RuntimeError("GEMINI_MODEL is missing from environment")
+        self.client = genai.Client(api_key=api_key)
+        self.max_output_tokens = max_output_tokens
+
+    def generate(self, prompt: str) -> str:
+        max_retries = 5
+        for attempt in range(max_retries):
+            try:
+                response = self.client.models.generate_content(
+                    model=self.model,
+                    contents=prompt,
+                )
+                answer = (response.text or "").strip()
+                if not answer:
+                    raise RuntimeError("Gemini returned an empty answer")
+                return answer
+            except Exception as exc:
+                if attempt == max_retries - 1:
+                    raise
+                time.sleep(2 * (attempt + 1))
+        raise RuntimeError("Gemini generation failed after retries")
+
+
 @dataclass(frozen=True)
 class DomainResponse:
     question: str
@@ -296,10 +327,15 @@ class DomainAssistant:
         top_k: int = 5,
     ) -> DomainAssistant:
         corpus_id, chunks = load_corpus(corpus_dir)
+        if generator is None:
+            if os.getenv("GEMINI_API_KEY", "").strip() or os.getenv("GOOGLE_API_KEY", "").strip():
+                generator = GeminiGenerator()
+            else:
+                generator = OpenAIGenerator()
         return cls(
             corpus_id,
             BM25Retriever(chunks),
-            generator if generator is not None else OpenAIGenerator(),
+            generator,
             top_k,
         )
 
