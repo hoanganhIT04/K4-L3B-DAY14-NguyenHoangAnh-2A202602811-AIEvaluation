@@ -30,11 +30,11 @@ critical.
 
 | Metric | Acceptable Low Score Scenario | Critical Low Score Scenario | Action Required |
 |---|---|---|---|
-| Faithfulness | | | |
-| Answer Relevance | | | |
-| Context Recall | | | |
-| Context Precision | | | |
-| Completeness | | | |
+| Faithfulness | Câu hỏi chít chat đơn giản không dựa trên context document. | Chatbot bị đặt câu hỏi nghiệp vụ nhưng hallucinate thông tin sai lệch so với chính sách OrbitTech. | Tinh chỉnh RAG prompt (strict grounding), thêm instruction "chỉ trả lời dựa trên context". |
+| Answer Relevance | Khách hàng hỏi câu dài nhiều chi tiết thừa và câu trả lời đi thẳng vào giải pháp không lặp lại từ khóa. | Câu trả lời lan man, trả lời sai trọng tâm câu hỏi của người dùng. | Kiểm tra câu lệnh prompt sinh câu trả lời, cải thiện query transformation / intent parsing. |
+| Context Recall | Câu hỏi đơn giản factual mà retriever lấy thiếu các chi tiết không quan trọng. | Retriever không lấy được chunk chứa điều kiện bảo hành/đổi trả cốt lõi dẫn đến trả lời thiếu. | Cải thiện phương pháp chunking, tối ưu hóa BM25 / vector index / hybrid search. |
+| Context Precision | Retriever lấy top-5 chunks trong đó thông tin đúng nằm ở rank 3-4 thay vì rank 1. | Mọi chunk liên quan bị đẩy xuống cuối kết quả retrieval hoặc chứa toàn noise/irrelevant context. | Bổ sung Reranker (như Cross-Encoder) để sắp xếp lại thứ tự chunk trước khi truyền vào LLM. |
+| Completeness | Khách hàng hỏi nhiều ý phụ không liên quan đến chính sách và assistant bỏ qua ý phụ vô hại. | Thiếu các bước xử lý quan trọng trong quy trình hoàn tiền/đổi trả hoặc bỏ sót ngoại lệ chính sách. | Cập nhật system prompt để trích xuất đầy đủ các điều kiện và ngoại lệ trong reference answer. |
 
 ### Exercise 1.2 — Bias trong LLM-as-a-Judge
 
@@ -47,14 +47,21 @@ Ba bias thường gặp:
 **Câu 1: Thiết kế experiment phát hiện position bias với ít nhất hai conditions.**
 
 > *Câu trả lời:*
+> - **Condition 1 (Original Order):** Đưa `Model A` làm Response 1 và `Model B` làm Response 2 vào prompt của LLM Judge để chấm/so sánh.
+> - **Condition 2 (Reversed Order):** Tráo đổi vị trí: Đưa `Model B` làm Response 1 và `Model A` làm Response 2 vào cùng prompt rubric.
+> - **Phân tích:** Nếu kết quả chấm đổi chiều thiên vị cho Response 1 ở cả 2 condition (ví dụ: Response 1 luôn thắng), xác nhận LLM Judge dính Position Bias. Xử lý bằng cách Swap Positioning & Average Score (tính trung bình cả 2 lượt swap).
 
 **Câu 2: Làm thế nào giảm verbosity bias bằng rubric design?**
 
 > *Câu trả lời:*
+> - Định nghĩa rõ ràng trong Rubric phạt điểm câu trả lời dông dài, chứa thông tin thừa ("Penalize unnecessary filler or wordiness").
+> - Yêu cầu LLM Judge đánh giá tiêu chí **Conciseness & Precision** hoặc **Completeness per token**, trong đó điểm tối đa (5/5) chỉ trao cho câu trả lời ngắn gọn, chính xác, đủ ý mà không thừa từ.
 
 **Câu 3: Tại sao cần calibrate LLM judge với human labels?**
 
 > *Câu trả lời:*
+> - LLM Judge không có nhận thức thực tế và dễ dính các bias tự nhiên (position, verbosity, self-preference).
+> - Việc calibrate với Human Labels (đánh giá từ chuyên gia/human experts) giúp tính toán độ tương quan (Cohen's Kappa / Spearman Correlation), phát hiện khoảng lệch (systematic bias) và tinh chỉnh prompt/rubric để LLM Judge đạt độ chính xác gần nhất với đánh giá con người.
 
 ### Exercise 1.3 — Evaluation trong CI/CD
 
@@ -62,13 +69,16 @@ Ba bias thường gặp:
 
 | Metric | Threshold | Lý do |
 |---|---:|---|
-| Faithfulness | | |
-| Answer Relevance | | |
-| Completeness | | |
+| Faithfulness | 0.85 | Trong domain hỗ trợ khách hàng, đưa ra thông tin bịa đặt (hallucination) gây tổn hại trực tiếp tới uy tín và tài chính doanh nghiệp. |
+| Answer Relevance | 0.80 | Đảm bảo câu trả lời trực tiếp giải quyết thắc mắc của khách hàng, tránh trả lời lạc đề gây phiền hà. |
+| Completeness | 0.75 | Đảm bảo cung cấp đủ thông tin quy trình/điều kiện cho khách hàng, cho phép dung sai nhỏ đối với các chi tiết phụ. |
 
 **Câu 2: Khi nào dùng offline evaluation, online evaluation và human review?**
 
 > *Câu trả lời:*
+> - **Offline Evaluation:** Dùng trong giai đoạn phát triển (Dev/Staging) và CI/CD pipeline trước khi deploy. Chạy tự động trên Golden Dataset để kiểm tra regression.
+> - **Online Evaluation:** Dùng trong môi trường Production thực tế. Giám sát các câu trả lời thật từ user qua telemetry, LLM-as-a-Judge real-time, phản hồi thumbs-up/thumbs-down và tỉ lệ chuyển hỗ trợ (escalation rate).
+> - **Human Review:** Dùng định kỳ (đánh giá mẫu 1-5% lượt chat) hoặc khi có alert từ Online Eval/từ chối từ khách hàng, nhằm rà soát các trường hợp khó (edge cases) và cập nhật Golden Dataset.
 
 ---
 
